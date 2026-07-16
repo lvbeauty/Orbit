@@ -125,6 +125,19 @@ talking to a laptop — pass the same public URL used above.
   immediately before building the `CreateBooking` body — confirmed fixed by reproducing the
   original failure (20s delay + intervening car search/select + set_traveler between hotel
   selection and confirm) and getting a clean booking on the first try (`confirmationId: PVOZXE`).
+- **Cancel and modify are verified against the real cert sandbox** (2026-07-16). `CancelBooking`'s
+  real field is `cancelAll: true` (plus `retrieveBooking: true` and `errorHandlingPolicy:
+  "ALLOW_PARTIAL_CANCEL"`) — the originally-guessed `cancelType: "CANCEL_ALL"` would have been
+  silently ignored rather than erroring, since cancelBooking's validation is looser than
+  createBooking's, so this could easily have shipped broken without a real test. `ModifyBooking`
+  turned out to be a **before/after diff API**, not a partial-update one: it needs the current
+  traveler state (`before`), the desired state (`after`), and a `bookingSignature` fetched from
+  `GetBooking` immediately beforehand. That's not something a voice agent's LLM could construct
+  as a raw JSON blob (the original `modify_trip` tool design, taking an opaque `changes_json`
+  string, would never have worked in practice) — replaced with a scoped `modifyContactInfo`
+  function/tool (`email`/`phone` params) matching the one flow actually verified. Confirmed both
+  by round-tripping through `get_trip`: modify showed the updated email on the traveler, cancel
+  removed the flight segment entirely.
 - **Sabre token refresh** isn't implemented — the provided API token is used as-is. Revisit if
   it turns out to be short-lived.
 - **Dining/experiences** are a small hardcoded dataset (`backend/src/tools/curated.ts`) since

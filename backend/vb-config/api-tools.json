@@ -177,13 +177,14 @@
   {
     "id": "modify_trip",
     "name": "modify_trip",
-    "description": "Modify an existing booking (e.g. contact info). changes_json must be a JSON-encoded string of the fields to change.",
+    "description": "Update the traveler's contact info (email and/or phone) on an existing booking. Provide at least one of email or phone.",
     "method": "POST",
     "url": "https://REPLACE_WITH_YOUR_PUBLIC_BACKEND_URL/tools/modify_trip",
     "auth": { "type": "none" },
     "parameters": [
       { "name": "confirmation_id", "type": "string", "description": "The booking confirmation id / PNR", "required": true, "location": "body" },
-      { "name": "changes_json", "type": "string", "description": "JSON-encoded object describing the change", "required": true, "location": "body" }
+      { "name": "email", "type": "string", "description": "New contact email", "required": false, "location": "body" },
+      { "name": "phone", "type": "string", "description": "New contact phone number", "required": false, "location": "body" }
     ],
     "timeout": 30,
     "max_retries": 0,

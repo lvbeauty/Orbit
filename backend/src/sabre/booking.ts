@@ -174,20 +174,61 @@ export async function getBooking(confirmationId: string) {
   return sabrePost<any>("/v1/trip/orders/getBooking", { confirmationId });
 }
 
+/**
+ * Verified against a real sandbox call on 2026-07-16 — the field is `cancelAll`, not the
+ * originally-guessed `cancelType: "CANCEL_ALL"` (which Sabre would have silently ignored
+ * rather than erroring on, since cancelBooking's body validation is looser than createBooking's).
+ * Confirmed the cancellation actually took by re-fetching the booking afterward and seeing the
+ * flight segment gone.
+ */
 export async function cancelBooking(confirmationId: string) {
-  const result = await sabrePost<any>("/v1/trip/orders/cancelBooking", {
+  return sabrePost<any>("/v1/trip/orders/cancelBooking", {
     confirmationId,
-    cancelType: "CANCEL_ALL",
+    retrieveBooking: true,
+    cancelAll: true,
+    errorHandlingPolicy: "ALLOW_PARTIAL_CANCEL",
   });
-  return result;
 }
 
 /**
- * `changes` is a passthrough of whatever fields the caller wants modified — ModifyBooking's
- * exact payload varies a lot by what's being changed (contact info, SSRs, travelers, loyalty,
- * FOP — see the collection's ModifyBookingAPI folder for the full menu) and wasn't fully
- * captured here. This wraps the endpoint; construct `changes` per the specific modification.
+ * ModifyBooking is a before/after diff API, not a partial-update one — it needs the current
+ * traveler state (`before`) plus the desired state (`after`), and a `bookingSignature` fetched
+ * from GetBooking immediately beforehand. This isn't something a voice agent's LLM could
+ * reliably construct itself even if we exposed it as a raw passthrough tool, which is what the
+ * original (unverified) design assumed — scoped to the one concrete flow actually verified
+ * against the sandbox (2026-07-16): updating the primary traveler's contact info.
  */
-export async function modifyBooking(confirmationId: string, changes: Record<string, unknown>) {
-  return sabrePost<any>("/v1/trip/orders/modifyBooking", { confirmationId, ...changes });
+export async function modifyContactInfo(confirmationId: string, updates: { email?: string; phone?: string }) {
+  const current = await getBooking(confirmationId);
+  const bookingSignature = current?.bookingSignature;
+  const traveler = current?.travelers?.[0];
+  if (!bookingSignature || !traveler) {
+    throw new Error(`Could not load booking ${confirmationId} to modify — no bookingSignature/traveler found.`);
+  }
+
+  const travelerIdentity = {
+    givenName: traveler.givenName,
+    surname: traveler.surname,
+    passengerCode: traveler.passengerCode,
+  };
+
+  const body = {
+    bookingSignature,
+    confirmationId,
+    before: {
+      travelers: [{ ...travelerIdentity, ...(traveler.emails ? { emails: traveler.emails } : {}), ...(traveler.phones ? { phones: traveler.phones } : {}) }],
+    },
+    after: {
+      travelers: [
+        {
+          ...travelerIdentity,
+          emails: updates.email ? [updates.email] : traveler.emails,
+          phones: updates.phone ? [{ number: updates.phone }] : traveler.phones,
+        },
+      ],
+    },
+    retrieveBooking: true,
+  };
+
+  return sabrePost<any>("/v1/trip/orders/modifyBooking", body);
 }

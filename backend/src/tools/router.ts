@@ -2,7 +2,7 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import { searchFlights, selectFlight } from "../sabre/flights.js";
 import { searchHotels, selectHotel } from "../sabre/hotels.js";
 import { searchCars, selectCar } from "../sabre/cars.js";
-import { setTraveler, confirmBooking, getBooking, cancelBooking, modifyBooking } from "../sabre/booking.js";
+import { setTraveler, confirmBooking, getBooking, cancelBooking, modifyContactInfo } from "../sabre/booking.js";
 import { getTrip, getOrCreateTrip } from "../trip/store.js";
 import { extractIdentityDocument } from "../landingai/client.js";
 import { recommendDining, recommendExperiences } from "./curated.js";
@@ -147,14 +147,9 @@ toolsRouter.post(
 toolsRouter.post(
   "/modify_trip",
   wrap(async (req) => {
-    const { confirmation_id, changes_json } = req.body;
-    let changes: Record<string, unknown> = {};
-    try {
-      changes = changes_json ? JSON.parse(changes_json) : {};
-    } catch {
-      throw new Error("changes_json must be a valid JSON string");
-    }
-    return modifyBooking(confirmation_id, changes);
+    const { confirmation_id, email, phone } = req.body;
+    if (!email && !phone) throw new Error("Provide at least one of email or phone to update.");
+    return modifyContactInfo(confirmation_id, { email, phone });
   }),
 );
 
