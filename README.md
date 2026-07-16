@@ -112,9 +112,20 @@ talking to a laptop — pass the same public URL used above.
   (`GUARANTEE`/`DEPOSIT`/`LATE`) that has to be mapped from the price-check response's internal
   `Guarantee.GuaranteeType` code (`GUAR`/`DEP`/...) — passing the raw code straight through 400s.
   The test-card `expiryDate` format was also wrong (`MMYY` guessed vs. the real `YYYY-MM`).
-  **Car has not yet been included in a real combined booking call** — its `CreateBooking`
-  fragment matches the collection's own example literally, but that's one call short of the
-  same level of confidence flight+hotel now have.
+- **Full flight+hotel+car `CreateBooking` is verified against the real cert sandbox**
+  (2026-07-16, `confirmationId: PSPJQI` — DFW→JFK Delta flight + NYC hotel + Thrifty rental at
+  JFK, all three in one order). No new field-shape fixes needed beyond the flight+hotel work
+  above — the `car` block's literal-example shape held up as-is.
+- **Price-checked offers expire fast — this is a real conversation-flow risk, not just a test
+  artifact.** The first combined-booking attempt failed with `UNABLE_TO_BOOK_HOTEL_EXPIRED_BOOKING_KEY`
+  purely because a handful of ordinary tool calls (searching/selecting a car, setting the
+  traveler) happened between selecting the hotel and confirming — it succeeded once hotel
+  selection moved to immediately before `confirm_booking`. A real voice conversation is much
+  slower than a test script (the agent talks, the user thinks, there are pauses), so this will
+  happen in practice. Nothing re-prices automatically today — `confirmBooking` needs either a
+  path that re-runs `HotelPriceCheck`/`VehPriceCheck` right before booking if enough time has
+  passed, or the agent's prompt needs to drive straight to confirmation once the user commits
+  rather than lingering on a selected-but-unconfirmed itinerary.
 - **Sabre token refresh** isn't implemented — the provided API token is used as-is. Revisit if
   it turns out to be short-lived.
 - **Dining/experiences** are a small hardcoded dataset (`backend/src/tools/curated.ts`) since
