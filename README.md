@@ -116,16 +116,15 @@ talking to a laptop — pass the same public URL used above.
   (2026-07-16, `confirmationId: PSPJQI` — DFW→JFK Delta flight + NYC hotel + Thrifty rental at
   JFK, all three in one order). No new field-shape fixes needed beyond the flight+hotel work
   above — the `car` block's literal-example shape held up as-is.
-- **Price-checked offers expire fast — this is a real conversation-flow risk, not just a test
-  artifact.** The first combined-booking attempt failed with `UNABLE_TO_BOOK_HOTEL_EXPIRED_BOOKING_KEY`
-  purely because a handful of ordinary tool calls (searching/selecting a car, setting the
-  traveler) happened between selecting the hotel and confirming — it succeeded once hotel
-  selection moved to immediately before `confirm_booking`. A real voice conversation is much
-  slower than a test script (the agent talks, the user thinks, there are pauses), so this will
-  happen in practice. Nothing re-prices automatically today — `confirmBooking` needs either a
-  path that re-runs `HotelPriceCheck`/`VehPriceCheck` right before booking if enough time has
-  passed, or the agent's prompt needs to drive straight to confirmation once the user commits
-  rather than lingering on a selected-but-unconfirmed itinerary.
+- **Price-checked offers expire fast — fixed.** The first combined-booking attempt failed with
+  `UNABLE_TO_BOOK_HOTEL_EXPIRED_BOOKING_KEY` purely because a handful of ordinary tool calls
+  (searching/selecting a car, setting the traveler) happened between selecting the hotel and
+  confirming — a real voice conversation is much slower than a test script, so this would
+  happen constantly in practice. `confirmBooking` now unconditionally re-runs
+  `selectFlight`/`selectHotel`/`selectCar` (re-pricing against Sabre) for whatever's selected,
+  immediately before building the `CreateBooking` body — confirmed fixed by reproducing the
+  original failure (20s delay + intervening car search/select + set_traveler between hotel
+  selection and confirm) and getting a clean booking on the first try (`confirmationId: PVOZXE`).
 - **Sabre token refresh** isn't implemented — the provided API token is used as-is. Revisit if
   it turns out to be short-lived.
 - **Dining/experiences** are a small hardcoded dataset (`backend/src/tools/curated.ts`) since

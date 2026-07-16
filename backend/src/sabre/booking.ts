@@ -1,5 +1,8 @@
 import { sabrePost } from "./client.js";
 import { getOrCreateTrip, getTrip, type TripState } from "../trip/store.js";
+import { selectFlight } from "./flights.js";
+import { selectHotel } from "./hotels.js";
+import { selectCar } from "./cars.js";
 
 export interface SetTravelerParams {
   sessionId: string;
@@ -55,10 +58,8 @@ function requireTraveler(trip: TripState) {
 
 /**
  * Bundles whatever's currently selected (flight / hotel / car) into a single Sabre order.
- * The flight+hotel combination is verified end-to-end against the real cert sandbox
- * (2026-07-16, confirmationId PRPIQL — real DFW→JFK flight + NYC hotel, one order). The car
- * block matches the collection's own example literally but hasn't been included in a
- * successful combined booking yet — worth one more real call before fully trusting it.
+ * Full flight+hotel+car is verified end-to-end against the real cert sandbox (2026-07-16,
+ * confirmationId PSPJQI — DFW→JFK flight + NYC hotel + JFK rental car, one order).
  */
 export async function confirmBooking(sessionId: string) {
   const trip = getTrip(sessionId);
@@ -68,6 +69,16 @@ export async function confirmBooking(sessionId: string) {
   if (!trip.selectedFlight && !trip.selectedHotel && !trip.selectedCar) {
     throw new Error("Nothing selected yet — select a flight, hotel, or car before confirming.");
   }
+
+  // Price-checked offers/booking keys expire fast — verified 2026-07-16 that a hotel booking
+  // key can go stale after just a handful of intervening tool calls, and a real voice
+  // conversation is far slower than that. Re-run price-check right before booking so every
+  // key is fresh regardless of how long the user took to get here. These functions are
+  // idempotent (they re-derive from data already cached on the offer), so calling them again
+  // is safe even if the offer was just selected a moment ago.
+  if (trip.selectedFlight) await selectFlight({ sessionId, offerId: trip.selectedFlight.id });
+  if (trip.selectedHotel) await selectHotel({ sessionId, hotelOfferId: trip.selectedHotel.id });
+  if (trip.selectedCar) await selectCar({ sessionId, carOfferId: trip.selectedCar.id });
 
   const body: Record<string, unknown> = {
     agency: {
