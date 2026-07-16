@@ -113,12 +113,11 @@ export async function confirmBooking(sessionId: string) {
 
   if (trip.selectedCar) {
     const carRaw = trip.selectedCar.raw;
-    // TODO: unverified — no CAR CreateBooking example body was available; shape inferred
-    // from the flightDetails/hotel convention.
-    body.car = {
-      bookingKey: carRaw?.priceChecked?.bookingKey ?? null,
-      formOfPayment: 1,
-    };
+    // Matches the Postman collection's "[CB] Car with FOP - simple" example exactly:
+    // just { bookingKey } — no rooms/formOfPayment like the hotel block needs. bookingKey
+    // comes from VehPriceCheckRS.PriceCheckInfo.BookingKey (cached by selectCar), verified
+    // against a real sandbox call on 2026-07-16 — see sabre/cars.ts.
+    body.car = { bookingKey: carRaw?.bookingKey ?? null };
   }
 
   const result = await sabrePost<any>("/v1/trip/orders/createBooking", body);
