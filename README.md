@@ -75,11 +75,18 @@ talking to a laptop — pass the same public URL used above.
 
 ## Known gaps / things to verify against real sandbox calls
 
-- **Sabre response shapes are inferred, not verified.** The Postman collection only gave us
-  request bodies for FlightShop/FlightCheck/ATPCO CreateBooking/hotel CreateBooking — hotel
-  and car price-check bodies, the combined flight+hotel+car CreateBooking shape, and every
-  response shape are best-effort guesses (see `TODO`s in `backend/src/sabre/*.ts`). Make one
-  real call per flow and tighten the field paths in `summarize*`/`confirmBooking` accordingly.
+- **Flight search/select are verified against the real cert sandbox** (2026-07-16) —
+  `search_flights`/`select_flight` now match Sabre's actual response shape: `FlightShop` and
+  `FlightCheck` both return a flat `{ offers, journeys, flights }` structure linked by id refs,
+  not the nested shape the request bodies implied. Also found and fixed: `FlightCheck` can
+  return several re-priced offers for one itinerary (different fare buckets) — picking
+  `offers[0]` blindly grabbed a $462 fare instead of the $144 fare that was actually shopped.
+  Auth needed `SABRE_AUTH_HEADER_STYLE=bearer` (not `raw`) despite the token's raw-security-token
+  look — see `.env.example`.
+- **Hotel/car and the combined CreateBooking shape are still unverified** — those request
+  bodies came from the Postman collection, but no real hotel/car/booking call has been made yet
+  (see remaining `TODO`s in `backend/src/sabre/{hotels,cars,booking}.ts`). Given how wrong the
+  flight assumptions turned out to be, treat these the same way until checked.
 - **Sabre token refresh** isn't implemented — the provided API token is used as-is. Revisit if
   it turns out to be short-lived.
 - **Dining/experiences** are a small hardcoded dataset (`backend/src/tools/curated.ts`) since

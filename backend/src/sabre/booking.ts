@@ -80,19 +80,20 @@ export async function confirmBooking(sessionId: string) {
   };
 
   if (trip.selectedFlight) {
-    const flight = trip.selectedFlight.raw?.journeys?.[0]?.flights?.[0] ?? trip.selectedFlight.raw?.flights?.[0] ?? {};
+    // resolvedJourneys carries every leg (all journeys, all connections) — verified against a
+    // real /v1/offers/flightShop response on 2026-07-16, see sabre/flights.ts.
+    const resolvedJourneys = trip.selectedFlight.raw?.resolvedJourneys ?? [];
+    const allFlights = resolvedJourneys.flatMap((j: { flights: any[] }) => j.flights);
     body.flightDetails = {
-      flights: [
-        {
-          flightNumber: flight.marketingFlightNumber,
-          airlineCode: flight.marketingAirlineCode,
-          fromAirportCode: flight.departureAirportCode,
-          toAirportCode: flight.arrivalAirportCode,
-          departureDate: flight.departureDate,
-          departureTime: flight.departureTime,
-          flightStatusCode: "NN",
-        },
-      ],
+      flights: allFlights.map((f: any) => ({
+        flightNumber: f.marketingFlightNumber,
+        airlineCode: f.marketingAirlineCode,
+        fromAirportCode: f.departureAirportCode,
+        toAirportCode: f.arrivalAirportCode,
+        departureDate: f.departureDate,
+        departureTime: f.departureTime,
+        flightStatusCode: "NN",
+      })),
       flightPricing: [{}],
     };
   }
