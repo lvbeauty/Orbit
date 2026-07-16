@@ -64,14 +64,20 @@ export async function searchHotels(params: SearchHotelsParams) {
   };
 }
 
+// Verified against a real /v5/get/hotelavail sandbox response on 2026-07-16 — city lives
+// under HotelInfo.LocationInfo.Address, not HotelInfo.Address, and pricing is a sibling
+// HotelRateInfo block (not nested in HotelInfo) keyed by a RateKey needed for price-check.
 function summarizeHotel(raw: any): Record<string, unknown> {
-  const hotel = raw?.HotelInfo ?? raw;
-  const rate = raw?.RateInfo ?? raw?.RateRange;
+  const hotel = raw?.HotelInfo ?? {};
+  const rate = raw?.HotelRateInfo?.RateInfos?.ConvertedRateInfo?.[0];
+  // RateKey deliberately excluded — it's a long opaque string the agent has no reason to
+  // speak or the app to display, and selectHotel reads it straight from the cached raw offer.
   return {
-    name: hotel?.HotelName ?? hotel?.Name ?? "unknown",
+    name: hotel?.HotelName ?? "unknown",
     hotelCode: hotel?.HotelCode ?? null,
-    city: hotel?.Address?.CityName ?? null,
-    nightlyRate: rate?.AverageRate ?? rate?.MinRate ?? null,
+    city: hotel?.LocationInfo?.Address?.CityName?.value ?? null,
+    nightlyRate: rate?.AverageNightlyRate ?? null,
+    totalPrice: rate?.ApproxTotalPrice ?? null,
     currency: rate?.CurrencyCode ?? "USD",
   };
 }
@@ -88,14 +94,25 @@ export async function selectHotel({ sessionId, hotelOfferId }: SelectHotelParams
     throw new Error(`No cached hotel offer ${hotelOfferId} for session ${sessionId}. Call search_hotels first.`);
   }
 
-  // TODO: exact HotelPriceCheck request body wasn't captured from the collection for this
-  // path — this passes the cached HotelAvailInfo straight through, which is a reasonable
-  // starting guess (Sabre's price-check APIs generally accept the avail response back) but
-  // should be verified against a real sandbox call.
-  const priceChecked = await sabrePost<any>("/v5/hotel/pricecheck", { HotelPriceCheckRQ: offer.raw });
+  const rateKey = offer.raw?.HotelRateInfo?.RateInfos?.ConvertedRateInfo?.[0]?.RateKey;
+  if (!rateKey) {
+    throw new Error(`Cached hotel offer ${hotelOfferId} has no RateKey to price-check.`);
+  }
 
-  offer.raw = { ...offer.raw, priceChecked };
-  offer.summary = { ...offer.summary, priceChecked: true };
+  // Verified against a real sandbox call on 2026-07-16: HotelPriceCheckRQ needs a
+  // RateInfoRef.RateKey (from the avail response), and returns a *different* key —
+  // PriceCheckInfo.BookingKey — which is what CreateBooking actually needs.
+  const priceChecked = await sabrePost<any>("/v5/hotel/pricecheck", {
+    HotelPriceCheckRQ: { RateInfoRef: { RateKey: rateKey } },
+  });
+  const priceCheckInfo = priceChecked?.HotelPriceCheckRS?.PriceCheckInfo;
+
+  offer.raw = { ...offer.raw, priceChecked, bookingKey: priceCheckInfo?.BookingKey };
+  offer.summary = {
+    ...offer.summary,
+    priceChanged: priceCheckInfo?.PriceChange ?? false,
+    priceDifference: priceCheckInfo?.PriceDifference ?? "0.00",
+  };
   trip.selectedHotel = offer;
 
   return { hotel_offer_id: offer.id, ...offer.summary };

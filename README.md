@@ -83,10 +83,17 @@ talking to a laptop — pass the same public URL used above.
   `offers[0]` blindly grabbed a $462 fare instead of the $144 fare that was actually shopped.
   Auth needed `SABRE_AUTH_HEADER_STYLE=bearer` (not `raw`) despite the token's raw-security-token
   look — see `.env.example`.
-- **Hotel/car and the combined CreateBooking shape are still unverified** — those request
-  bodies came from the Postman collection, but no real hotel/car/booking call has been made yet
-  (see remaining `TODO`s in `backend/src/sabre/{hotels,cars,booking}.ts`). Given how wrong the
-  flight assumptions turned out to be, treat these the same way until checked.
+- **Hotel search/select are verified against the real cert sandbox** (2026-07-16) — `GetHotelAvail`'s
+  city lives under `HotelInfo.LocationInfo.Address.CityName.value` (not `HotelInfo.Address`), and
+  pricing is a sibling `HotelRateInfo.RateInfos.ConvertedRateInfo[]` block, each with a `RateKey`.
+  `HotelPriceCheckRQ` needs `{ RateInfoRef: { RateKey } }` — confirmed via Sabre's own validation
+  error (`missing required properties ["RateInfoRef"]`) — and its response returns a *different*
+  key, `PriceCheckInfo.BookingKey`, which is what `CreateBooking`'s `hotel.bookingKey` actually
+  needs (not the RateKey).
+- **Car search/select and the combined flight+hotel+car CreateBooking body are still
+  unverified** — no real car or booking call has been made yet (see remaining `TODO`s in
+  `backend/src/sabre/{cars,booking}.ts`). Given how wrong the flight/hotel assumptions turned
+  out to be before checking, treat these the same way until verified.
 - **Sabre token refresh** isn't implemented — the provided API token is used as-is. Revisit if
   it turns out to be short-lived.
 - **Dining/experiences** are a small hardcoded dataset (`backend/src/tools/curated.ts`) since

@@ -100,10 +100,12 @@ export async function confirmBooking(sessionId: string) {
 
   if (trip.selectedHotel) {
     const hotelRaw = trip.selectedHotel.raw;
+    // bookingKey comes from HotelPriceCheckRS.PriceCheckInfo.BookingKey (cached by
+    // selectHotel), verified against a real sandbox call on 2026-07-16 — see sabre/hotels.ts.
+    // The `hotel` block's own shape (rooms/formOfPayment) is still unverified against a real
+    // CreateBooking call, only against the ATPCO example body's convention.
     body.hotel = {
-      // TODO: verify the real field name/path for the price-checked booking key —
-      // this is a best guess pending a real /v5/hotel/pricecheck response.
-      bookingKey: hotelRaw?.priceChecked?.bookingKey ?? hotelRaw?.HotelInfo?.BookingKey ?? null,
+      bookingKey: hotelRaw?.bookingKey ?? null,
       rooms: [{ travelerIndices: [1] }],
       formOfPayment: 1,
     };
