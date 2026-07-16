@@ -47,10 +47,7 @@ export async function searchHotels(params: SearchHotelsParams) {
   const response = await sabrePost<any>("/v5/get/hotelavail", body);
 
   const trip = getOrCreateTrip(params.sessionId);
-  const rawHotels: any[] =
-    response?.GetHotelAvailRS?.HotelAvailInfos?.HotelAvailInfo ??
-    response?.HotelAvailInfos ??
-    [];
+  const rawHotels: any[] = response?.GetHotelAvailRS?.HotelAvailInfos?.HotelAvailInfo ?? [];
   const offers: CachedOffer[] = rawHotels.map((raw) => {
     const id = nanoid(8);
     const cached: CachedOffer = { id, raw, summary: summarizeHotel(raw) };
@@ -82,6 +79,11 @@ function summarizeHotel(raw: any): Record<string, unknown> {
   };
 }
 
+// CreateBooking's hotel.paymentPolicy is an enum (GUARANTEE/DEPOSIT/LATE) — verified
+// 2026-07-16 via Sabre's own "not one of the values accepted" error — but the price-check
+// response reports it as a different internal code (GuaranteeType: GUAR/DEP/...).
+const PAYMENT_POLICY_MAP: Record<string, string> = { GUAR: "GUARANTEE", DEP: "DEPOSIT", LATE: "LATE" };
+
 export interface SelectHotelParams {
   sessionId: string;
   hotelOfferId: string;
@@ -106,8 +108,10 @@ export async function selectHotel({ sessionId, hotelOfferId }: SelectHotelParams
     HotelPriceCheckRQ: { RateInfoRef: { RateKey: rateKey } },
   });
   const priceCheckInfo = priceChecked?.HotelPriceCheckRS?.PriceCheckInfo;
+  const guaranteeType = priceCheckInfo?.HotelRateInfo?.Rooms?.Room?.[0]?.RatePlans?.RatePlan?.[0]?.RateInfo?.Guarantee?.GuaranteeType;
+  const paymentPolicy = PAYMENT_POLICY_MAP[guaranteeType] ?? "GUARANTEE";
 
-  offer.raw = { ...offer.raw, priceChecked, bookingKey: priceCheckInfo?.BookingKey };
+  offer.raw = { ...offer.raw, priceChecked, bookingKey: priceCheckInfo?.BookingKey, paymentPolicy };
   offer.summary = {
     ...offer.summary,
     priceChanged: priceCheckInfo?.PriceChange ?? false,

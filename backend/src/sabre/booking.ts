@@ -23,15 +23,27 @@ export function setTraveler(params: SetTravelerParams) {
 }
 
 /**
- * Sabre cert VISA test card (from the collection's example CreateBooking requests) — fine
- * for the sandbox/demo, must NOT be reused anywhere real.
+ * Sabre cert VISA test card, fine for the sandbox/demo, must NOT be reused anywhere real.
+ * Number/security code from the collection's example CreateBooking requests; expiryDate
+ * format (YYYY-MM, not MMYY as originally guessed) confirmed against the collection's actual
+ * environment values on 2026-07-16.
  */
-const TEST_CARD = {
-  type: "PAYMENTCARD",
-  cardTypeCode: "VI",
-  cardNumber: "4487971000000006",
-  cardSecurityCode: "123",
-  expiryDate: "1225",
+const TEST_CARD_NUMBER = "4487971000000006";
+const TEST_CARD_EXPIRY = "2036-07";
+
+/**
+ * Sandbox agency/billing address — verified 2026-07-16 that CreateBooking's agency.address
+ * and payment.cardHolder.address both require a full US address (street/city/state/postal),
+ * not just name+country as originally guessed. We don't collect a real address from the
+ * traveler over voice, so this is a fixed placeholder (Sabre's own example agency address),
+ * fine for a cert-sandbox demo.
+ */
+const SANDBOX_ADDRESS = {
+  street: "1230 Ellen Ave, apt 10",
+  city: "Dallas",
+  stateProvince: "TX",
+  postalCode: "75063",
+  countryCode: "US",
 };
 
 function requireTraveler(trip: TripState) {
@@ -43,9 +55,10 @@ function requireTraveler(trip: TripState) {
 
 /**
  * Bundles whatever's currently selected (flight / hotel / car) into a single Sabre order.
- * Field shapes for flightDetails/hotel come from real example bodies in the Postman
- * collection; the `car` block is inferred by the same convention and NOT verified against a
- * real example — check a real cert response/request before relying on it for a car-only demo.
+ * The flight+hotel combination is verified end-to-end against the real cert sandbox
+ * (2026-07-16, confirmationId PRPIQL — real DFW→JFK flight + NYC hotel, one order). The car
+ * block matches the collection's own example literally but hasn't been included in a
+ * successful combined booking yet — worth one more real call before fully trusting it.
  */
 export async function confirmBooking(sessionId: string) {
   const trip = getTrip(sessionId);
@@ -58,10 +71,7 @@ export async function confirmBooking(sessionId: string) {
 
   const body: Record<string, unknown> = {
     agency: {
-      address: {
-        name: `${traveler.givenName} ${traveler.surname}`,
-        countryCode: "US",
-      },
+      address: { name: `${traveler.givenName} ${traveler.surname}`, ...SANDBOX_ADDRESS },
       ticketingPolicy: "TODAY",
     },
     travelers: [
@@ -76,7 +86,26 @@ export async function confirmBooking(sessionId: string) {
       emails: traveler.email ? [traveler.email] : [],
       phones: traveler.phone ? [traveler.phone] : [],
     },
-    payment: { formsOfPayment: [TEST_CARD] },
+    payment: {
+      formsOfPayment: [
+        {
+          type: "PAYMENTCARD",
+          cardTypeCode: "VI",
+          cardNumber: TEST_CARD_NUMBER,
+          cardSecurityCode: "123",
+          expiryDate: TEST_CARD_EXPIRY,
+          // Required specifically for hotel bookings (verified 2026-07-16: "Hotel booking
+          // with PAYMENTCARD requires: cardHolder") — harmless to always include.
+          cardHolder: {
+            givenName: traveler.givenName,
+            surname: traveler.surname,
+            email: traveler.email,
+            phone: traveler.phone,
+            address: SANDBOX_ADDRESS,
+          },
+        },
+      ],
+    },
   };
 
   if (trip.selectedFlight) {
@@ -84,6 +113,7 @@ export async function confirmBooking(sessionId: string) {
     // real /v1/offers/flightShop response on 2026-07-16, see sabre/flights.ts.
     const resolvedJourneys = trip.selectedFlight.raw?.resolvedJourneys ?? [];
     const allFlights = resolvedJourneys.flatMap((j: { flights: any[] }) => j.flights);
+    const bookingClassByFlightId: Map<string, string> = trip.selectedFlight.raw?.bookingClassByFlightId ?? new Map();
     body.flightDetails = {
       flights: allFlights.map((f: any) => ({
         flightNumber: f.marketingFlightNumber,
@@ -92,6 +122,9 @@ export async function confirmBooking(sessionId: string) {
         toAirportCode: f.arrivalAirportCode,
         departureDate: f.departureDate,
         departureTime: f.departureTime,
+        // Mandatory field found via Sabre's "must not be null" error on 2026-07-16 — comes
+        // from the checked offer's fare breakdown, not the flight object itself.
+        bookingClass: bookingClassByFlightId.get(f.id) ?? "Y",
         flightStatusCode: "NN",
       })),
       flightPricing: [{}],
@@ -100,13 +133,12 @@ export async function confirmBooking(sessionId: string) {
 
   if (trip.selectedHotel) {
     const hotelRaw = trip.selectedHotel.raw;
-    // bookingKey comes from HotelPriceCheckRS.PriceCheckInfo.BookingKey (cached by
-    // selectHotel), verified against a real sandbox call on 2026-07-16 — see sabre/hotels.ts.
-    // The `hotel` block's own shape (rooms/formOfPayment) is still unverified against a real
-    // CreateBooking call, only against the ATPCO example body's convention.
+    // bookingKey and paymentPolicy both come from HotelPriceCheckRS.PriceCheckInfo (cached by
+    // selectHotel) — verified against a real sandbox call on 2026-07-16, see sabre/hotels.ts.
     body.hotel = {
       bookingKey: hotelRaw?.bookingKey ?? null,
       rooms: [{ travelerIndices: [1] }],
+      paymentPolicy: hotelRaw?.paymentPolicy ?? "GUARANTEE",
       formOfPayment: 1,
     };
   }

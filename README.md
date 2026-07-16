@@ -101,10 +101,20 @@ talking to a laptop — pass the same public URL used above.
   (`PriceCheckInfo.BookingKey`/`PriceChange`/`PriceDifference`). The `CreateBooking` `car` block
   is simpler than hotel's — just `{ bookingKey }`, no `rooms`/`formOfPayment` — per the
   collection's `[CB] Car with FOP - simple` example.
-- **The combined flight+hotel+car `CreateBooking` body is still unverified** — flight, hotel,
-  and car have each been separately confirmed to build correctly, but no real call has bundled
-  more than one item type into a single order yet (see remaining `TODO` in
-  `backend/src/sabre/booking.ts`).
+- **Combined flight+hotel `CreateBooking` is verified against the real cert sandbox**
+  (2026-07-16, `confirmationId: PSCNRD` — real DFW→JFK Delta flight + Hampton Inn NYC, one
+  order, then round-tripped through `get_trip`). Getting there required four more fixes beyond
+  the individual flight/hotel ones above: `flightDetails.flights[].bookingClass` is mandatory
+  and only exists in the *checked* offer's fare breakdown (`items[].fares[].fareComponents[].segmentDetails[]`,
+  keyed by flight id) — not on the flight object; `agency.address` and `payment.formsOfPayment[0].cardHolder.address`
+  both need a full US address (street/city/state/postal), not just name+country; hotel bookings
+  specifically require `cardHolder` on the payment card; and `hotel.paymentPolicy` is an enum
+  (`GUARANTEE`/`DEPOSIT`/`LATE`) that has to be mapped from the price-check response's internal
+  `Guarantee.GuaranteeType` code (`GUAR`/`DEP`/...) — passing the raw code straight through 400s.
+  The test-card `expiryDate` format was also wrong (`MMYY` guessed vs. the real `YYYY-MM`).
+  **Car has not yet been included in a real combined booking call** — its `CreateBooking`
+  fragment matches the collection's own example literally, but that's one call short of the
+  same level of confidence flight+hotel now have.
 - **Sabre token refresh** isn't implemented — the provided API token is used as-is. Revisit if
   it turns out to be short-lived.
 - **Dining/experiences** are a small hardcoded dataset (`backend/src/tools/curated.ts`) since

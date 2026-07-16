@@ -36,6 +36,9 @@ interface SabreOffer {
   id: string;
   totalPrice?: { amount: string; currencyCode: string };
   journeyRefs: string[];
+  // Fare/booking-class breakdown — deeply nested and only used to look up bookingClass per
+  // flight leg (see selectFlight), not worth fully typing.
+  items?: any[];
 }
 
 interface FlightShopResponse {
@@ -171,7 +174,19 @@ export async function selectFlight({ sessionId, offerId }: SelectFlightParams) {
   const matchingOffer =
     checked.offers?.find((o) => o.totalPrice?.amount === shoppedPrice) ?? checked.offers?.[0];
 
-  offer.raw = { ...offer.raw, checked, checkedOffer: matchingOffer };
+  // CreateBooking's flightDetails.flights[].bookingClass is mandatory (verified 2026-07-16 —
+  // Sabre 400s with "must not be null" without it) and isn't on the flight object at all; it
+  // only exists per-segment inside the checked offer's fare breakdown, keyed by flight id.
+  const bookingClassByFlightId = new Map<string, string>();
+  for (const fare of matchingOffer?.items?.[0]?.fares ?? []) {
+    for (const fc of fare.fareComponents ?? []) {
+      for (const seg of fc.segmentDetails ?? []) {
+        if (seg.flightRef && seg.bookingClassCode) bookingClassByFlightId.set(seg.flightRef, seg.bookingClassCode);
+      }
+    }
+  }
+
+  offer.raw = { ...offer.raw, checked, checkedOffer: matchingOffer, bookingClassByFlightId };
   offer.summary = {
     ...offer.summary,
     checkedPrice: matchingOffer?.totalPrice?.amount ?? offer.summary.price,
