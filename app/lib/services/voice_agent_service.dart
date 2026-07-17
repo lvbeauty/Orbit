@@ -17,7 +17,6 @@ class VoiceAgentService extends ChangeNotifier {
   lk.EventsListener<lk.RoomEvent>? _listener;
   String? _sessionId;
   bool _disposed = false;
-  bool _hasConnectedBefore = false;
 
   final List<TranscriptEntry> transcript = [];
   Itinerary itinerary = const Itinerary();
@@ -76,17 +75,13 @@ class VoiceAgentService extends ChangeNotifier {
       }
       await participant.setMicrophoneEnabled(true);
 
-      // On a reconnect (End Call then Start again), iOS's AVAudioSession sometimes takes real
-      // time to fully release and reacquire mic hardware after the previous call's teardown —
-      // audio silently doesn't flow until the mic is manually toggled off/on. Automate that
-      // exact workaround here instead of making the user do it by hand every time.
-      if (_hasConnectedBefore) {
-        await Future.delayed(const Duration(milliseconds: 400));
-        await participant.setMicrophoneEnabled(false);
-        await Future.delayed(const Duration(milliseconds: 200));
-        await participant.setMicrophoneEnabled(true);
-      }
-      _hasConnectedBefore = true;
+      // Tried auto-toggling the mic off/on here to fix a reconnect-audio issue (iOS's
+      // AVAudioSession sometimes needs real time to reacquire mic hardware after a previous
+      // call's teardown) — reverted 2026-07-17: it reconfigures the audio session while the
+      // agent's greeting is actively playing, causing sped-up/pitch-distorted playback on
+      // every call, a worse regression than the problem it fixed. The actual product
+      // requirement is one continuous conversation anyway, not repeated reconnects, so this
+      // is left as a known rough edge rather than risking audio quality on every call.
 
       isConnected = true;
       isConnecting = false;
