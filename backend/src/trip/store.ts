@@ -16,6 +16,21 @@ export interface CachedOffer<T = any> {
   summary: Record<string, unknown>;
 }
 
+/**
+ * Same reasoning as the session_id fallback below: the model can hallucinate a plausible-
+ * looking offer_id (observed 2026-07-17: "renaissance_seattle_20260724" instead of a real
+ * short random id like "rNMMQyPv") instead of the exact one a search tool returned. If the
+ * given id isn't cached, fall back to the most recently cached offer of that type rather than
+ * failing outright — in a single-conversation demo there's rarely real ambiguity about which
+ * offer "the hotel I just found" refers to.
+ */
+export function resolveOffer<T>(offers: Map<string, CachedOffer<T>>, offerId: string): CachedOffer<T> | undefined {
+  const exact = offers.get(offerId);
+  if (exact) return exact;
+  const values = [...offers.values()];
+  return values.at(-1);
+}
+
 export interface IdentityDocument {
   documentType?: string;
   fullName?: string;
@@ -78,8 +93,33 @@ export interface TripState {
 
 const sessions = new Map<string, TripState>();
 
+/**
+ * Verified 2026-07-17: over one ~11-minute call, the background model used three different
+ * (partly hallucinated) session_id values across tool calls — not a one-off, a real LLM
+ * long-context reliability limit, and Vocal Bridge sends no other call/session-identifying
+ * header we could use instead (checked the raw HTTP requests it sends). Since this app is a
+ * single-conversation-at-a-time demo, not a multi-tenant service, we self-heal instead of
+ * failing: an unrecognized session_id falls back to the one active (unconfirmed) trip rather
+ * than silently starting over or throwing. This trades strict session isolation (irrelevant
+ * here — only one real conversation happens at a time) for actually completing bookings.
+ */
+let lastActiveSessionId: string | undefined;
+
+function resolveTrip(sessionId: string): TripState | undefined {
+  const exact = sessions.get(sessionId);
+  if (exact) return exact;
+  if (lastActiveSessionId) {
+    const fallback = sessions.get(lastActiveSessionId);
+    if (fallback && fallback.bookingStatus === "draft") {
+      console.warn(`[trip] session_id "${sessionId}" not found — falling back to active trip "${lastActiveSessionId}"`);
+      return fallback;
+    }
+  }
+  return undefined;
+}
+
 export function getOrCreateTrip(sessionId: string): TripState {
-  let trip = sessions.get(sessionId);
+  let trip = resolveTrip(sessionId);
   if (!trip) {
     trip = {
       sessionId,
@@ -93,9 +133,12 @@ export function getOrCreateTrip(sessionId: string): TripState {
     };
     sessions.set(sessionId, trip);
   }
+  lastActiveSessionId = trip.sessionId;
   return trip;
 }
 
 export function getTrip(sessionId: string): TripState | undefined {
-  return sessions.get(sessionId);
+  const trip = resolveTrip(sessionId);
+  if (trip) lastActiveSessionId = trip.sessionId;
+  return trip;
 }

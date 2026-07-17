@@ -155,6 +155,21 @@ talking to a laptop — pass the same public URL used above.
   narrow — one adult identity captured regardless of `adults` count, no third child, no
   distinct multiple-adult identities — the agent is prompted to say so plainly if any of that
   comes up rather than guessing or dropping a traveler silently.
+- **The agent doesn't reliably carry `session_id`/`offer_id` values across a long
+  conversation — fixed with a backend-side fallback, not a prompt fix.** Verified 2026-07-17:
+  a single ~11-minute call used three different (partly hallucinated) `session_id` values
+  across its tool calls, plus a hallucinated `hotel_offer_id` (a fake human-readable string,
+  not one of our real short random ids) — causing repeated "not found" failures, endless
+  re-searching, and the booking never completing. This is a real LLM long-context limit, not
+  something another prompt tweak fixes, and Vocal Bridge sends no other call/session-
+  identifying header we could use instead (checked the raw HTTP requests it sends — just
+  generic forwarding headers). Since this app is a single-conversation-at-a-time demo, not a
+  multi-tenant service, the trip store (`backend/src/trip/store.ts`) now self-heals instead:
+  an unrecognized `session_id` falls back to the one active (unconfirmed) trip, and an
+  unrecognized `offer_id` (`resolveOffer`) falls back to the most recently cached offer of
+  that type. Verified: search under one session_id, then select under a completely different
+  hallucinated session_id *and* a hallucinated offer_id, still correctly resolved to the real
+  cached offer.
 - **Sabre token refresh** isn't implemented — the provided API token is used as-is. Revisit if
   it turns out to be short-lived.
 - **Dining/experiences** are a small hardcoded dataset (`backend/src/tools/curated.ts`) since

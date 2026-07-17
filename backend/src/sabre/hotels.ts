@@ -1,6 +1,6 @@
 import { nanoid } from "nanoid";
 import { sabrePost } from "./client.js";
-import { getOrCreateTrip, type CachedOffer } from "../trip/store.js";
+import { getOrCreateTrip, resolveOffer, type CachedOffer } from "../trip/store.js";
 import { dedupe } from "../trip/dedupe.js";
 
 export interface SearchHotelsParams {
@@ -104,7 +104,7 @@ export interface SelectHotelParams {
 
 export async function selectHotel({ sessionId, hotelOfferId }: SelectHotelParams) {
   const trip = getOrCreateTrip(sessionId);
-  const offer = trip.hotelOffers.get(hotelOfferId);
+  const offer = resolveOffer(trip.hotelOffers, hotelOfferId);
   if (!offer) {
     throw new Error(`No cached hotel offer ${hotelOfferId} for session ${sessionId}. Call search_hotels first.`);
   }
