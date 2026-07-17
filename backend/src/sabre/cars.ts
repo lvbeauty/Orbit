@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { sabrePost } from "./client.js";
 import { getOrCreateTrip, type CachedOffer } from "../trip/store.js";
+import { dedupe } from "../trip/dedupe.js";
 
 export interface SearchCarsParams {
   sessionId: string;
@@ -13,6 +14,18 @@ export interface SearchCarsParams {
 }
 
 export async function searchCars(params: SearchCarsParams) {
+  const key = JSON.stringify([
+    "search_cars",
+    params.sessionId,
+    params.pickupLocationCode,
+    params.dropoffLocationCode,
+    params.pickupDate,
+    params.returnDate,
+  ]);
+  return dedupe(key, () => searchCarsImpl(params));
+}
+
+async function searchCarsImpl(params: SearchCarsParams) {
   const body = {
     GetVehAvailRQ: {
       SearchCriteria: {

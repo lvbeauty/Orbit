@@ -59,7 +59,21 @@ class VoiceAgentService extends ChangeNotifier {
       });
 
       await room.connect(tokenData.livekitUrl, tokenData.token);
-      await room.localParticipant?.setMicrophoneEnabled(true);
+
+      // room.localParticipant can briefly be null right after connect() resolves.
+      // `localParticipant?.setMicrophoneEnabled(true)` would silently no-op in that case —
+      // no exception, mic never enabled, nothing else looks wrong. Retry briefly instead of
+      // failing silently (found via a real call where zero mic audio reached the agent despite
+      // the app reporting a normal connection).
+      lk.LocalParticipant? participant = room.localParticipant;
+      for (var attempt = 0; participant == null && attempt < 10; attempt++) {
+        await Future.delayed(const Duration(milliseconds: 200));
+        participant = room.localParticipant;
+      }
+      if (participant == null) {
+        throw Exception('Connected to the room but no local participant appeared — microphone was not enabled.');
+      }
+      await participant.setMicrophoneEnabled(true);
 
       isConnected = true;
       isConnecting = false;

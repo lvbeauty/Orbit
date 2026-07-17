@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { sabrePost } from "./client.js";
 import { getOrCreateTrip, type CachedOffer } from "../trip/store.js";
+import { dedupe } from "../trip/dedupe.js";
 
 export interface SearchFlightsParams {
   sessionId: string;
@@ -56,6 +57,19 @@ export interface ResolvedJourney {
 }
 
 export async function searchFlights(params: SearchFlightsParams) {
+  const key = JSON.stringify([
+    "search_flights",
+    params.sessionId,
+    params.origin,
+    params.destination,
+    params.departureDate,
+    params.returnDate,
+    params.adults,
+  ]);
+  return dedupe(key, () => searchFlightsImpl(params));
+}
+
+async function searchFlightsImpl(params: SearchFlightsParams) {
   const journeys = [
     {
       departureLocation: { airportCode: params.origin },
@@ -82,6 +96,13 @@ export async function searchFlights(params: SearchFlightsParams) {
   }
 
   const response = await sabrePost<FlightShopResponse>("/v1/offers/flightShop", body);
+
+  // Verified 2026-07-17: Sabre returns HTTP 200 with just {timestamp} — no offers/journeys/
+  // flights arrays at all, no error — for a past or otherwise invalid date. Was crashing with
+  // "Cannot read properties of undefined (reading 'map')" instead of a clean zero-result reply.
+  if (!response.offers || !response.journeys || !response.flights) {
+    return { offerCount: 0, offers: [] };
+  }
 
   const flightsById = new Map(response.flights.map((f) => [f.id, f]));
   const journeysById = new Map(response.journeys.map((j) => [j.id, j]));

@@ -17,10 +17,16 @@ export const toolsRouter = Router();
 
 function wrap(fn: (req: Request, res: Response) => Promise<unknown>) {
   return async (req: Request, res: Response, next: NextFunction) => {
+    // Kept intentionally — caught multiple real bugs live (the agent silently sending
+    // past-year dates, a hallucinated session_id) that were invisible from Vocal Bridge's
+    // own call logs alone, since those only show payload sizes, not values.
+    console.log(`[tool] ${req.path} <-`, JSON.stringify(req.body));
     try {
       const result = await fn(req, res);
+      console.log(`[tool] ${req.path} ->`, JSON.stringify(result).slice(0, 500));
       res.json(result);
     } catch (err) {
+      console.log(`[tool] ${req.path} !! threw:`, err instanceof Error ? err.message : err);
       next(err);
     }
   };

@@ -1,6 +1,7 @@
 import { nanoid } from "nanoid";
 import { sabrePost } from "./client.js";
 import { getOrCreateTrip, type CachedOffer } from "../trip/store.js";
+import { dedupe } from "../trip/dedupe.js";
 
 export interface SearchHotelsParams {
   sessionId: string;
@@ -13,6 +14,18 @@ export interface SearchHotelsParams {
 }
 
 export async function searchHotels(params: SearchHotelsParams) {
+  const key = JSON.stringify([
+    "search_hotels",
+    params.sessionId,
+    params.locationCode,
+    params.checkInDate,
+    params.checkOutDate,
+    params.adults,
+  ]);
+  return dedupe(key, () => searchHotelsImpl(params));
+}
+
+async function searchHotelsImpl(params: SearchHotelsParams) {
   const body = {
     GetHotelAvailRQ: {
       SearchCriteria: {
