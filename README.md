@@ -170,6 +170,24 @@ talking to a laptop — pass the same public URL used above.
   that type. Verified: search under one session_id, then select under a completely different
   hallucinated session_id *and* a hallucinated offer_id, still correctly resolved to the real
   cached offer.
+- **The agent could talk through a booking without ever actually booking it.** Verified
+  2026-07-17 via a real call transcript: the agent gathered every detail correctly (traveler
+  name, infant info, email, phone, car choice), got explicit "yes, book it" three times, but
+  never called `select_flight`/`select_hotel`/`select_car`/`confirm_booking` — it only ever
+  *described* doing so ("we'll proceed with the Delta flight..."). Root cause: at the final
+  step it tried Vocal Bridge's built-in `put_on_hold` tool (to work silently while finalizing),
+  which failed with "Hold feature is not enabled for this agent" — and appears to have gotten
+  stuck after that failure rather than proceeding to the actual booking tool calls. Fixed by
+  enabling `hold_enabled` (`vb config set --hold-enabled true`) and adding explicit prompt
+  guidance that describing an action is not the same as calling its tool, and that a failed/
+  unavailable hold attempt must never block the actual select_*/confirm_booking calls.
+- **Reconnecting (End Call → Start again) can leave audio broken, sometimes needing the app
+  backgrounded and foregrounded to recover** — a real iOS `AVAudioSession` limitation, not
+  something we've found a safe in-app fix for. One attempted fix (auto-toggling the mic on
+  reconnect) caused a worse regression (sped-up/pitch-distorted audio) and was reverted — see
+  the git history around 2026-07-17. Since the actual product requirement is one continuous
+  conversation per booking, this is left as a known rough edge on reconnects specifically,
+  rather than risking audio quality on the call that matters.
 - **Sabre token refresh** isn't implemented — the provided API token is used as-is. Revisit if
   it turns out to be short-lived.
 - **Dining/experiences** are a small hardcoded dataset (`backend/src/tools/curated.ts`) since
