@@ -11,6 +11,11 @@ export interface SetTravelerParams {
   birthDate?: string; // YYYY-MM-DD
   email?: string;
   phone?: string;
+  /** Infant traveling with this adult — Sabre requires the infant's own name + birthDate as a
+   * separate travelers[] entry (passengerCode "INF"). Omit if there's no infant. */
+  infantGivenName?: string;
+  infantSurname?: string;
+  infantBirthDate?: string; // YYYY-MM-DD
 }
 
 export function setTraveler(params: SetTravelerParams) {
@@ -22,6 +27,13 @@ export function setTraveler(params: SetTravelerParams) {
     email: params.email,
     phone: params.phone,
   };
+  if (params.infantGivenName && params.infantSurname) {
+    trip.infant = {
+      givenName: params.infantGivenName,
+      surname: params.infantSurname,
+      birthDate: params.infantBirthDate,
+    };
+  }
   return { ok: true };
 }
 
@@ -80,19 +92,32 @@ export async function confirmBooking(sessionId: string) {
   if (trip.selectedHotel) await selectHotel({ sessionId, hotelOfferId: trip.selectedHotel.id });
   if (trip.selectedCar) await selectCar({ sessionId, carOfferId: trip.selectedCar.id });
 
+  // Verified 2026-07-17 against the collection's own infant example: an infant is just a
+  // second travelers[] entry with passengerCode "INF" and its own name/birthDate — Sabre
+  // auto-adds the required infant SSR, nothing else to construct.
+  const travelers: Record<string, unknown>[] = [
+    {
+      givenName: traveler.givenName,
+      surname: traveler.surname,
+      birthDate: traveler.birthDate,
+      passengerCode: "ADT",
+    },
+  ];
+  if (trip.infant?.givenName && trip.infant?.surname) {
+    travelers.push({
+      givenName: trip.infant.givenName,
+      surname: trip.infant.surname,
+      birthDate: trip.infant.birthDate,
+      passengerCode: "INF",
+    });
+  }
+
   const body: Record<string, unknown> = {
     agency: {
       address: { name: `${traveler.givenName} ${traveler.surname}`, ...SANDBOX_ADDRESS },
       ticketingPolicy: "TODAY",
     },
-    travelers: [
-      {
-        givenName: traveler.givenName,
-        surname: traveler.surname,
-        birthDate: traveler.birthDate,
-        passengerCode: "ADT",
-      },
-    ],
+    travelers,
     contactInfo: {
       emails: traveler.email ? [traveler.email] : [],
       phones: traveler.phone ? [traveler.phone] : [],

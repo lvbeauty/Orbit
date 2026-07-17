@@ -138,6 +138,17 @@ talking to a laptop — pass the same public URL used above.
   function/tool (`email`/`phone` params) matching the one flow actually verified. Confirmed both
   by round-tripping through `get_trip`: modify showed the updated email on the traveler, cancel
   removed the flight segment entirely.
+- **Infant travelers are supported and verified against the real cert sandbox** (2026-07-17,
+  `confirmationId: RMBNUS` — 1 adult + 1 infant, DFW→JFK, booked and confirmed with both
+  travelers present in the response). An infant is just a second `travelers[]` entry with
+  `passengerCode: "INF"` and its own name/birthDate — Sabre auto-adds the required infant SSR,
+  nothing else to construct. `search_flights`/`select_flight`/`set_traveler`/`confirmBooking`
+  all thread a shared `{adults, infants}` party mix through so FlightShop and FlightCheck price
+  against the same composition. Fixed a related pre-existing bug along the way: `select_flight`
+  always sent a single hardcoded ADT to FlightCheck regardless of how many/what type of
+  travelers were actually searched. Scope is intentionally narrow — one infant, one adult
+  identity captured (multiple distinct adult names, or a non-infant child fare, aren't
+  supported; the agent is prompted to say so plainly if either comes up).
 - **Sabre token refresh** isn't implemented — the provided API token is used as-is. Revisit if
   it turns out to be short-lived.
 - **Dining/experiences** are a small hardcoded dataset (`backend/src/tools/curated.ts`) since

@@ -17,6 +17,7 @@ class VoiceAgentService extends ChangeNotifier {
   lk.EventsListener<lk.RoomEvent>? _listener;
   String? _sessionId;
   bool _disposed = false;
+  bool _hasConnectedBefore = false;
 
   final List<TranscriptEntry> transcript = [];
   Itinerary itinerary = const Itinerary();
@@ -74,6 +75,18 @@ class VoiceAgentService extends ChangeNotifier {
         throw Exception('Connected to the room but no local participant appeared — microphone was not enabled.');
       }
       await participant.setMicrophoneEnabled(true);
+
+      // On a reconnect (End Call then Start again), iOS's AVAudioSession sometimes takes real
+      // time to fully release and reacquire mic hardware after the previous call's teardown —
+      // audio silently doesn't flow until the mic is manually toggled off/on. Automate that
+      // exact workaround here instead of making the user do it by hand every time.
+      if (_hasConnectedBefore) {
+        await Future.delayed(const Duration(milliseconds: 400));
+        await participant.setMicrophoneEnabled(false);
+        await Future.delayed(const Duration(milliseconds: 200));
+        await participant.setMicrophoneEnabled(true);
+      }
+      _hasConnectedBefore = true;
 
       isConnected = true;
       isConnecting = false;

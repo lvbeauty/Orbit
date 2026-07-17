@@ -35,7 +35,7 @@ function wrap(fn: (req: Request, res: Response) => Promise<unknown>) {
 toolsRouter.post(
   "/search_flights",
   wrap(async (req) => {
-    const { session_id, origin, destination, departure_date, return_date, adults } = req.body;
+    const { session_id, origin, destination, departure_date, return_date, adults, infants } = req.body;
     return searchFlights({
       sessionId: session_id,
       origin,
@@ -43,6 +43,7 @@ toolsRouter.post(
       departureDate: departure_date,
       returnDate: return_date,
       adults,
+      infants,
     });
   }),
 );
@@ -102,8 +103,19 @@ toolsRouter.post(
 toolsRouter.post(
   "/set_traveler",
   wrap(async (req) => {
-    const { session_id, given_name, surname, birth_date, email, phone } = req.body;
-    return setTraveler({ sessionId: session_id, givenName: given_name, surname, birthDate: birth_date, email, phone });
+    const { session_id, given_name, surname, birth_date, email, phone, infant_given_name, infant_surname, infant_birth_date } =
+      req.body;
+    return setTraveler({
+      sessionId: session_id,
+      givenName: given_name,
+      surname,
+      birthDate: birth_date,
+      email,
+      phone,
+      infantGivenName: infant_given_name,
+      infantSurname: infant_surname,
+      infantBirthDate: infant_birth_date,
+    });
   }),
 );
 

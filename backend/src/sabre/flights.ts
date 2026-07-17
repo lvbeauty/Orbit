@@ -10,6 +10,8 @@ export interface SearchFlightsParams {
   departureDate: string; // YYYY-MM-DD
   returnDate?: string; // YYYY-MM-DD, omit for one-way
   adults?: number;
+  /** Scoped to one infant traveling with the primary adult — see trip/store.ts's `infant` field. */
+  infants?: number;
   airlineCode?: string;
 }
 
@@ -65,11 +67,26 @@ export async function searchFlights(params: SearchFlightsParams) {
     params.departureDate,
     params.returnDate,
     params.adults,
+    params.infants,
   ]);
   return dedupe(key, () => searchFlightsImpl(params));
 }
 
+/** Sabre's own example (a real 1xADT+1xCNN+1xINF FlightShop request) uses a flat travelers[]
+ * list, one entry per passenger — ADT entries first, then INF — with no adult/infant
+ * association needed at shop time. Shared by searchFlights and selectFlight so both send the
+ * exact same party composition Sabre priced against. */
+function travelerTypeList(adults: number, infants: number): { passengerTypeCode: string }[] {
+  return [
+    ...Array.from({ length: adults }, () => ({ passengerTypeCode: "ADT" })),
+    ...Array.from({ length: infants }, () => ({ passengerTypeCode: "INF" })),
+  ];
+}
+
 async function searchFlightsImpl(params: SearchFlightsParams) {
+  const adults = params.adults ?? 1;
+  const infants = params.infants ?? 0;
+
   const journeys = [
     {
       departureLocation: { airportCode: params.origin },
@@ -87,7 +104,7 @@ async function searchFlightsImpl(params: SearchFlightsParams) {
 
   const body: Record<string, unknown> = {
     journeys,
-    travelers: Array.from({ length: params.adults ?? 1 }, () => ({ passengerTypeCode: "ADT" })),
+    travelers: travelerTypeList(adults, infants),
     route: { maximumNumberOfStops: 1 },
     sources: { providers: ["Sabre"], distributionModels: ["ATPCO"] },
   };
@@ -108,6 +125,7 @@ async function searchFlightsImpl(params: SearchFlightsParams) {
   const journeysById = new Map(response.journeys.map((j) => [j.id, j]));
 
   const trip = getOrCreateTrip(params.sessionId);
+  trip.lastFlightSearchPartyMix = { adults, infants };
   const offers: CachedOffer<{ offer: SabreOffer; resolvedJourneys: ResolvedJourney[] }>[] = response.offers.map(
     (offer) => {
       const resolvedJourneys: ResolvedJourney[] = offer.journeyRefs.map((journeyId) => {
@@ -180,7 +198,11 @@ export async function selectFlight({ sessionId, offerId }: SelectFlightParams) {
         marketingFlightNumber: f.marketingFlightNumber,
       })),
     })),
-    travelers: [{ passengerTypeCode: "ADT" }],
+    // Bug fixed alongside infant support: this previously always sent a single hardcoded ADT
+    // regardless of how many travelers (or what type) were actually searched, which could
+    // price-check against the wrong party size. Now matches the mix search_flights actually
+    // shopped with.
+    travelers: travelerTypeList(trip.lastFlightSearchPartyMix?.adults ?? 1, trip.lastFlightSearchPartyMix?.infants ?? 0),
   };
 
   // FlightCheck responds with the same flat { offers, journeys, flights } shape as FlightShop,

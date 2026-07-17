@@ -46,6 +46,23 @@ export interface TripState {
     phone?: string;
   };
 
+  /**
+   * Scoped to one infant (traveling with the primary adult) — matches Sabre's own example
+   * shape (a second `travelers[]` entry with passengerCode "INF", own name/birthDate). Multiple
+   * distinct adult identities aren't captured at all yet (confirmBooking only ever books the one
+   * `traveler` above regardless of `adults` count) — that's a pre-existing gap, not something
+   * this infant support fixes.
+   */
+  infant?: {
+    givenName?: string;
+    surname?: string;
+    birthDate?: string;
+  };
+
+  /** Passenger-type mix used for the last flight search, so selectFlight's FlightCheck call can
+   * send the same travelers[] composition Sabre priced against in FlightShop. */
+  lastFlightSearchPartyMix?: { adults: number; infants: number };
+
   identityDocuments: IdentityDocument[];
 
   confirmationId?: string;
