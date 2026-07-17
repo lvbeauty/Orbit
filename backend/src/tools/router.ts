@@ -35,7 +35,7 @@ function wrap(fn: (req: Request, res: Response) => Promise<unknown>) {
 toolsRouter.post(
   "/search_flights",
   wrap(async (req) => {
-    const { session_id, origin, destination, departure_date, return_date, adults, infants } = req.body;
+    const { session_id, origin, destination, departure_date, return_date, adults, infants, children } = req.body;
     return searchFlights({
       sessionId: session_id,
       origin,
@@ -44,6 +44,7 @@ toolsRouter.post(
       returnDate: return_date,
       adults,
       infants,
+      children,
     });
   }),
 );
@@ -103,8 +104,23 @@ toolsRouter.post(
 toolsRouter.post(
   "/set_traveler",
   wrap(async (req) => {
-    const { session_id, given_name, surname, birth_date, email, phone, infant_given_name, infant_surname, infant_birth_date } =
-      req.body;
+    const {
+      session_id,
+      given_name,
+      surname,
+      birth_date,
+      email,
+      phone,
+      infant_given_name,
+      infant_surname,
+      infant_birth_date,
+      child1_given_name,
+      child1_surname,
+      child1_birth_date,
+      child2_given_name,
+      child2_surname,
+      child2_birth_date,
+    } = req.body;
     return setTraveler({
       sessionId: session_id,
       givenName: given_name,
@@ -115,6 +131,12 @@ toolsRouter.post(
       infantGivenName: infant_given_name,
       infantSurname: infant_surname,
       infantBirthDate: infant_birth_date,
+      child1GivenName: child1_given_name,
+      child1Surname: child1_surname,
+      child1BirthDate: child1_birth_date,
+      child2GivenName: child2_given_name,
+      child2Surname: child2_surname,
+      child2BirthDate: child2_birth_date,
     });
   }),
 );

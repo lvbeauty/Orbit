@@ -146,9 +146,15 @@ talking to a laptop — pass the same public URL used above.
   all thread a shared `{adults, infants}` party mix through so FlightShop and FlightCheck price
   against the same composition. Fixed a related pre-existing bug along the way: `select_flight`
   always sent a single hardcoded ADT to FlightCheck regardless of how many/what type of
-  travelers were actually searched. Scope is intentionally narrow — one infant, one adult
-  identity captured (multiple distinct adult names, or a non-infant child fare, aren't
-  supported; the agent is prompted to say so plainly if either comes up).
+  travelers were actually searched.
+- **Child travelers (up to two, `passengerCode: "CNN"`) are also supported and verified**
+  (2026-07-17, `confirmationId: RJFDGO` — 1 adult + 2 children + 1 infant, all four correctly
+  typed in the booking response). Same mechanic as infants, just a different passenger code.
+  Two fixed name/DOB slots (`child1_*`/`child2_*` on `set_traveler`) rather than a real array,
+  since Custom HTTP API Tools only take flat scalar params. Scope is still intentionally
+  narrow — one adult identity captured regardless of `adults` count, no third child, no
+  distinct multiple-adult identities — the agent is prompted to say so plainly if any of that
+  comes up rather than guessing or dropping a traveler silently.
 - **Sabre token refresh** isn't implemented — the provided API token is used as-is. Revisit if
   it turns out to be short-lived.
 - **Dining/experiences** are a small hardcoded dataset (`backend/src/tools/curated.ts`) since

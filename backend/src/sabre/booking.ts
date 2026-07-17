@@ -16,6 +16,14 @@ export interface SetTravelerParams {
   infantGivenName?: string;
   infantSurname?: string;
   infantBirthDate?: string; // YYYY-MM-DD
+  /** Up to two children (passengerCode "CNN") — two fixed slots since Custom HTTP API Tools
+   * only take flat scalar params, not arrays. Omit either/both if there's no second child. */
+  child1GivenName?: string;
+  child1Surname?: string;
+  child1BirthDate?: string;
+  child2GivenName?: string;
+  child2Surname?: string;
+  child2BirthDate?: string;
 }
 
 export function setTraveler(params: SetTravelerParams) {
@@ -33,6 +41,13 @@ export function setTraveler(params: SetTravelerParams) {
       surname: params.infantSurname,
       birthDate: params.infantBirthDate,
     };
+  }
+  trip.children = [];
+  if (params.child1GivenName && params.child1Surname) {
+    trip.children.push({ givenName: params.child1GivenName, surname: params.child1Surname, birthDate: params.child1BirthDate });
+  }
+  if (params.child2GivenName && params.child2Surname) {
+    trip.children.push({ givenName: params.child2GivenName, surname: params.child2Surname, birthDate: params.child2BirthDate });
   }
   return { ok: true };
 }
@@ -103,6 +118,11 @@ export async function confirmBooking(sessionId: string) {
       passengerCode: "ADT",
     },
   ];
+  for (const child of trip.children) {
+    if (child.givenName && child.surname) {
+      travelers.push({ givenName: child.givenName, surname: child.surname, birthDate: child.birthDate, passengerCode: "CNN" });
+    }
+  }
   if (trip.infant?.givenName && trip.infant?.surname) {
     travelers.push({
       givenName: trip.infant.givenName,

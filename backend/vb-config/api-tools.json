@@ -13,7 +13,8 @@
       { "name": "departure_date", "type": "string", "description": "Departure date, YYYY-MM-DD", "required": true, "location": "body" },
       { "name": "return_date", "type": "string", "description": "Return date, YYYY-MM-DD, omit for one-way", "required": false, "location": "body" },
       { "name": "adults", "type": "number", "description": "Number of adult travelers, default 1", "required": false, "location": "body" },
-      { "name": "infants", "type": "number", "description": "Number of infants traveling with the adult (lap infants), default 0", "required": false, "location": "body" }
+      { "name": "infants", "type": "number", "description": "Number of infants traveling with the adult (lap infants), default 0", "required": false, "location": "body" },
+      { "name": "children", "type": "number", "description": "Number of children traveling (not infants), max 2, default 0", "required": false, "location": "body" }
     ],
     "timeout": 30,
     "max_retries": 1,
@@ -103,7 +104,7 @@
   {
     "id": "set_traveler",
     "name": "set_traveler",
-    "description": "Record the lead adult traveler's name/contact info, and optionally an infant traveling with them. Call before confirm_booking.",
+    "description": "Record the lead adult traveler's name/contact info, and optionally an infant and up to two children traveling with them. Call before confirm_booking.",
     "method": "POST",
     "url": "https://REPLACE_WITH_YOUR_PUBLIC_BACKEND_URL/tools/set_traveler",
     "auth": { "type": "none" },
@@ -116,7 +117,13 @@
       { "name": "phone", "type": "string", "description": "Contact phone number", "required": false, "location": "body" },
       { "name": "infant_given_name", "type": "string", "description": "Infant's first name, if traveling with an infant", "required": false, "location": "body" },
       { "name": "infant_surname", "type": "string", "description": "Infant's last name, if traveling with an infant", "required": false, "location": "body" },
-      { "name": "infant_birth_date", "type": "string", "description": "Infant's date of birth, YYYY-MM-DD", "required": false, "location": "body" }
+      { "name": "infant_birth_date", "type": "string", "description": "Infant's date of birth, YYYY-MM-DD", "required": false, "location": "body" },
+      { "name": "child1_given_name", "type": "string", "description": "First child's first name, if traveling with a child", "required": false, "location": "body" },
+      { "name": "child1_surname", "type": "string", "description": "First child's last name, if traveling with a child", "required": false, "location": "body" },
+      { "name": "child1_birth_date", "type": "string", "description": "First child's date of birth, YYYY-MM-DD", "required": false, "location": "body" },
+      { "name": "child2_given_name", "type": "string", "description": "Second child's first name, if traveling with a second child", "required": false, "location": "body" },
+      { "name": "child2_surname", "type": "string", "description": "Second child's last name, if traveling with a second child", "required": false, "location": "body" },
+      { "name": "child2_birth_date", "type": "string", "description": "Second child's date of birth, YYYY-MM-DD", "required": false, "location": "body" }
     ],
     "timeout": 15,
     "max_retries": 1,

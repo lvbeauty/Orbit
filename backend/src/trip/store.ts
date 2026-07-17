@@ -59,9 +59,16 @@ export interface TripState {
     birthDate?: string;
   };
 
+  /**
+   * Up to two children (passengerCode "CNN") — Custom HTTP API Tools only take flat scalar
+   * params, so this is two fixed slots (child1/child2) rather than a real array; a third child
+   * isn't representable without adding more tool params.
+   */
+  children: { givenName?: string; surname?: string; birthDate?: string }[];
+
   /** Passenger-type mix used for the last flight search, so selectFlight's FlightCheck call can
    * send the same travelers[] composition Sabre priced against in FlightShop. */
-  lastFlightSearchPartyMix?: { adults: number; infants: number };
+  lastFlightSearchPartyMix?: { adults: number; infants: number; children: number };
 
   identityDocuments: IdentityDocument[];
 
@@ -80,6 +87,7 @@ export function getOrCreateTrip(sessionId: string): TripState {
       flightOffers: new Map(),
       hotelOffers: new Map(),
       carOffers: new Map(),
+      children: [],
       identityDocuments: [],
       bookingStatus: "draft",
     };
