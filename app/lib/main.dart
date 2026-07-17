@@ -11,7 +11,7 @@ class NonstopApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Nonstop',
+      title: 'Orbit',
       theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
       home: const HomeScreen(),
     );

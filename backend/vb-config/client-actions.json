@@ -7,7 +7,7 @@
   },
   {
     "name": "document_uploaded",
-    "description": "Sent when the traveler photographs an identity document in-app. Payload: { document_url }. The agent should call extract_travel_document with this URL and read the extracted fields back for confirmation.",
+    "description": "Sent when the traveler photographs an ID document in-app. Payload: { document_url }. Call extract_travel_document with this URL and read the fields back to confirm.",
     "direction": "app_to_agent",
     "behavior": "notify"
   },

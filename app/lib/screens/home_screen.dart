@@ -43,7 +43,7 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Nonstop')),
+      appBar: AppBar(title: const Text('Orbit')),
       body: AnimatedBuilder(
         animation: _agent,
         builder: (context, _) {
