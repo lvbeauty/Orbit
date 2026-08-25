@@ -1,0 +1,250 @@
+import { nanoid } from "nanoid";
+import { sabrePost } from "./client.js";
+import { getOrCreateTrip, resolveOffer, type CachedOffer } from "../trip/store.js";
+import { dedupe } from "../trip/dedupe.js";
+
+export interface SearchFlightsParams {
+  sessionId: string;
+  origin: string;
+  destination: string;
+  departureDate: string; // YYYY-MM-DD
+  returnDate?: string; // YYYY-MM-DD, omit for one-way
+  adults?: number;
+  /** Scoped to one infant traveling with the primary adult — see trip/store.ts's `infant` field. */
+  infants?: number;
+  /** Up to two children — see trip/store.ts's `children` field. */
+  children?: number;
+  airlineCode?: string;
+}
+
+interface SabreFlight {
+  id: string;
+  departureAirportCode: string;
+  departureDate: string;
+  departureTime: string;
+  arrivalAirportCode: string;
+  arrivalDate: string;
+  arrivalTime: string;
+  operatingAirlineCode: string;
+  operatingFlightNumber: number;
+  marketingAirlineCode: string;
+  marketingFlightNumber: number;
+  durationInMinutes?: number;
+}
+
+interface SabreJourney {
+  id: string;
+  flightRefs: string[];
+}
+
+interface SabreOffer {
+  id: string;
+  totalPrice?: { amount: string; currencyCode: string };
+  journeyRefs: string[];
+  // Fare/booking-class breakdown — deeply nested and only used to look up bookingClass per
+  // flight leg (see selectFlight), not worth fully typing.
+  items?: any[];
+}
+
+interface FlightShopResponse {
+  offers: SabreOffer[];
+  journeys: SabreJourney[];
+  flights: SabreFlight[];
+}
+
+/** A journey with its flight legs resolved from Sabre's flat id-ref response — this is what
+ * gets cached per offer, so selectFlight can rebuild an accurate FlightCheck body (including
+ * every leg of a round-trip / every segment of a connection, not just the first one). */
+export interface ResolvedJourney {
+  journeyId: string;
+  flights: SabreFlight[];
+}
+
+export async function searchFlights(params: SearchFlightsParams) {
+  const key = JSON.stringify([
+    "search_flights",
+    params.sessionId,
+    params.origin,
+    params.destination,
+    params.departureDate,
+    params.returnDate,
+    params.adults,
+    params.infants,
+    params.children,
+  ]);
+  return dedupe(key, () => searchFlightsImpl(params));
+}
+
+/** Sabre's own example (a real 1xADT+1xCNN+1xINF FlightShop request) uses a flat travelers[]
+ * list, one entry per passenger, in ADT/CNN/INF order — with no adult/infant/child association
+ * needed at shop time. Shared by searchFlights and selectFlight so both send the exact same
+ * party composition Sabre priced against. */
+function travelerTypeList(adults: number, infants: number, children: number): { passengerTypeCode: string }[] {
+  return [
+    ...Array.from({ length: adults }, () => ({ passengerTypeCode: "ADT" })),
+    ...Array.from({ length: children }, () => ({ passengerTypeCode: "CNN" })),
+    ...Array.from({ length: infants }, () => ({ passengerTypeCode: "INF" })),
+  ];
+}
+
+async function searchFlightsImpl(params: SearchFlightsParams) {
+  const adults = params.adults ?? 1;
+  const infants = params.infants ?? 0;
+  const children = Math.min(params.children ?? 0, 2);
+
+  const journeys = [
+    {
+      departureLocation: { airportCode: params.origin },
+      arrivalLocation: { airportCode: params.destination },
+      departureDate: params.departureDate,
+    },
+  ];
+  if (params.returnDate) {
+    journeys.push({
+      departureLocation: { airportCode: params.destination },
+      arrivalLocation: { airportCode: params.origin },
+      departureDate: params.returnDate,
+    });
+  }
+
+  const body: Record<string, unknown> = {
+    journeys,
+    travelers: travelerTypeList(adults, infants, children),
+    route: { maximumNumberOfStops: 1 },
+    sources: { providers: ["Sabre"], distributionModels: ["ATPCO"] },
+  };
+  if (params.airlineCode) {
+    body.airlines = { marketingAirlinesFilter: { airlineCodes: [params.airlineCode] } };
+  }
+
+  const response = await sabrePost<FlightShopResponse>("/v1/offers/flightShop", body);
+
+  // Verified 2026-07-17: Sabre returns HTTP 200 with just {timestamp} — no offers/journeys/
+  // flights arrays at all, no error — for a past or otherwise invalid date. Was crashing with
+  // "Cannot read properties of undefined (reading 'map')" instead of a clean zero-result reply.
+  if (!response.offers || !response.journeys || !response.flights) {
+    return { offerCount: 0, offers: [] };
+  }
+
+  const flightsById = new Map(response.flights.map((f) => [f.id, f]));
+  const journeysById = new Map(response.journeys.map((j) => [j.id, j]));
+
+  const trip = getOrCreateTrip(params.sessionId);
+  trip.lastFlightSearchPartyMix = { adults, infants, children };
+  const offers: CachedOffer<{ offer: SabreOffer; resolvedJourneys: ResolvedJourney[] }>[] = response.offers.map(
+    (offer) => {
+      const resolvedJourneys: ResolvedJourney[] = offer.journeyRefs.map((journeyId) => {
+        const journey = journeysById.get(journeyId);
+        const flights = (journey?.flightRefs ?? [])
+          .map((flightId) => flightsById.get(flightId))
+          .filter((f): f is SabreFlight => Boolean(f));
+        return { journeyId, flights };
+      });
+
+      const id = nanoid(8);
+      const cached: CachedOffer<{ offer: SabreOffer; resolvedJourneys: ResolvedJourney[] }> = {
+        id,
+        raw: { offer, resolvedJourneys },
+        summary: summarizeOffer(offer, resolvedJourneys),
+      };
+      trip.flightOffers.set(id, cached);
+      return cached;
+    },
+  );
+
+  return {
+    offerCount: offers.length,
+    offers: offers.map((o) => ({ offer_id: o.id, ...o.summary })),
+  };
+}
+
+function summarizeOffer(offer: SabreOffer, resolvedJourneys: ResolvedJourney[]): Record<string, unknown> {
+  const firstLeg = resolvedJourneys[0]?.flights[0];
+  const legCounts = resolvedJourneys.map((j) => j.flights.length);
+  return {
+    airline: firstLeg?.marketingAirlineCode ?? "unknown",
+    flightNumber: firstLeg?.marketingFlightNumber ?? null,
+    departureAirport: firstLeg?.departureAirportCode ?? null,
+    arrivalAirport: resolvedJourneys[0]?.flights.at(-1)?.arrivalAirportCode ?? null,
+    departureDate: firstLeg?.departureDate ?? null,
+    departureTime: firstLeg?.departureTime ?? null,
+    stopsPerJourney: legCounts.map((n) => n - 1),
+    journeyCount: resolvedJourneys.length, // 1 = one-way, 2 = round trip
+    price: offer.totalPrice?.amount ?? null,
+    currency: offer.totalPrice?.currencyCode ?? null,
+  };
+}
+
+export interface SelectFlightParams {
+  sessionId: string;
+  offerId: string;
+}
+
+export async function selectFlight({ sessionId, offerId }: SelectFlightParams) {
+  const trip = getOrCreateTrip(sessionId);
+  const offer = resolveOffer(trip.flightOffers, offerId);
+  if (!offer) {
+    throw new Error(`No cached flight offer ${offerId} for session ${sessionId}. Call search_flights first.`);
+  }
+
+  const resolvedJourneys: ResolvedJourney[] = offer.raw.resolvedJourneys;
+  const checkBody = {
+    journeys: resolvedJourneys.map((journey) => ({
+      flights: journey.flights.map((f) => ({
+        departureAirportCode: f.departureAirportCode,
+        departureDate: f.departureDate,
+        departureTime: f.departureTime,
+        arrivalAirportCode: f.arrivalAirportCode,
+        arrivalDate: f.arrivalDate,
+        arrivalTime: f.arrivalTime,
+        operatingAirlineCode: f.operatingAirlineCode,
+        operatingFlightNumber: f.operatingFlightNumber,
+        marketingAirlineCode: f.marketingAirlineCode,
+        marketingFlightNumber: f.marketingFlightNumber,
+      })),
+    })),
+    // Bug fixed alongside infant support: this previously always sent a single hardcoded ADT
+    // regardless of how many travelers (or what type) were actually searched, which could
+    // price-check against the wrong party size. Now matches the mix search_flights actually
+    // shopped with.
+    travelers: travelerTypeList(
+      trip.lastFlightSearchPartyMix?.adults ?? 1,
+      trip.lastFlightSearchPartyMix?.infants ?? 0,
+      trip.lastFlightSearchPartyMix?.children ?? 0,
+    ),
+  };
+
+  // FlightCheck responds with the same flat { offers, journeys, flights } shape as FlightShop,
+  // but can return several re-priced offers for the same itinerary (different fare buckets),
+  // linked via additionalOffersRefs — offers[0] is NOT necessarily the fare that was shopped.
+  // Verified against a real sandbox call on 2026-07-16: shopping a $144.39 fare came back with
+  // offers[0] at $462.40 (a pricier fare class) and the original $144.39 fare as offers[1].
+  // Pick whichever checked offer's price matches what was shopped; fall back to the first
+  // (and flag it) if none match, since availability can legitimately change between calls.
+  const checked = await sabrePost<FlightShopResponse>("/v1/offers/flightCheck", checkBody);
+  const shoppedPrice = offer.raw.offer.totalPrice?.amount;
+  const matchingOffer =
+    checked.offers?.find((o) => o.totalPrice?.amount === shoppedPrice) ?? checked.offers?.[0];
+
+  // CreateBooking's flightDetails.flights[].bookingClass is mandatory (verified 2026-07-16 —
+  // Sabre 400s with "must not be null" without it) and isn't on the flight object at all; it
+  // only exists per-segment inside the checked offer's fare breakdown, keyed by flight id.
+  const bookingClassByFlightId = new Map<string, string>();
+  for (const fare of matchingOffer?.items?.[0]?.fares ?? []) {
+    for (const fc of fare.fareComponents ?? []) {
+      for (const seg of fc.segmentDetails ?? []) {
+        if (seg.flightRef && seg.bookingClassCode) bookingClassByFlightId.set(seg.flightRef, seg.bookingClassCode);
+      }
+    }
+  }
+
+  offer.raw = { ...offer.raw, checked, checkedOffer: matchingOffer, bookingClassByFlightId };
+  offer.summary = {
+    ...offer.summary,
+    checkedPrice: matchingOffer?.totalPrice?.amount ?? offer.summary.price,
+    priceChanged: matchingOffer?.totalPrice?.amount !== shoppedPrice,
+  };
+  trip.selectedFlight = offer;
+
+  return { offer_id: offer.id, ...offer.summary };
+}

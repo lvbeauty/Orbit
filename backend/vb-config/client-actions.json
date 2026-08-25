@@ -1,0 +1,24 @@
+[
+  {
+    "name": "session_start",
+    "description": "Sent once, right after the app connects. Payload: { session_id }. The agent must reuse this session_id as the session_id parameter on every trip tool call for the rest of the conversation.",
+    "direction": "app_to_agent",
+    "behavior": "notify"
+  },
+  {
+    "name": "document_uploaded",
+    "description": "Sent when the traveler photographs an ID document in-app. Payload: { document_url }. Call extract_travel_document with this URL and read the fields back to confirm.",
+    "direction": "app_to_agent",
+    "behavior": "notify"
+  },
+  {
+    "name": "itinerary_updated",
+    "description": "Trigger after any select_flight/select_hotel/select_car/confirm_booking tool call so the app can refresh the on-screen itinerary. Payload: the same object get_draft_itinerary returns.",
+    "direction": "agent_to_app"
+  },
+  {
+    "name": "booking_confirmed",
+    "description": "Trigger once confirm_booking succeeds, so the app can show a confirmation/receipt screen. Payload: { confirmation_id }.",
+    "direction": "agent_to_app"
+  }
+]
